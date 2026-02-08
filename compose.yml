@@ -1,0 +1,27 @@
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${RUNNER_NAME}
+    env_file:
+      - ${ENV_FILE}
+
+    restart: unless-stopped
+
+    volumes:
+      # Mount work directory at the SAME path as on the host
+      # This makes Docker-in-Docker volume mounts work seamlessly
+      # The path inside the container matches the host path
+      - ${RUNNER_WORK_DIR:-/tmp/github-runner-work}:${RUNNER_WORK_DIR:-/tmp/github-runner-work}
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      # Tell the runner where to create its work directory
+      - RUNNER_WORK_DIR=${RUNNER_WORK_DIR:-/tmp/github-runner-work}
+
+    # Use host's Docker daemon - set DOCKER_GID to your host's docker group GID
+    # Find it: docker run --rm alpine stat -c '%g' /var/run/docker.sock
+    # Or on Linux: getent group docker | cut -d: -f3
+    group_add:
+      - "${DOCKER_GID:-999}"
