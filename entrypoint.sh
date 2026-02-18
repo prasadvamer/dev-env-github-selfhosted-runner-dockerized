@@ -33,12 +33,18 @@ export RUNNER_NAME="${RUNNER_NAME}"
 export RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,docker}"
 export WORK_DIR="$WORK_DIR"
 
-# Switch to runner user while preserving environment
-exec su runner -c 'cd /actions-runner && bash -s' << 'RUNNER_SCRIPT'
+# Ensure Node/npm (Volta) are on PATH for job steps (su can reset env)
+export VOLTA_HOME="${VOLTA_HOME:-/usr/local/volta}"
+export PATH="${VOLTA_HOME}/bin:${PATH}"
+
+# Switch to runner user; set PATH/VOLTA_HOME inside su so job steps see node/npm
+exec su runner -c 'export VOLTA_HOME=/usr/local/volta; export PATH=/usr/local/volta/bin:$PATH; cd /actions-runner && bash -s' << 'RUNNER_SCRIPT'
 set -e
 
 # Set HOME explicitly for the runner process
 export HOME=/home/runner
+export VOLTA_HOME=/usr/local/volta
+export PATH=/usr/local/volta/bin:$PATH
 
 required_vars=(REPO_URL RUNNER_TOKEN RUNNER_NAME)
 for v in "${required_vars[@]}"; do

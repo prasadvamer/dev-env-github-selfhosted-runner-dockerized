@@ -49,6 +49,11 @@ RUN set -eux; \
     curl -fL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" -o /usr/local/bin/docker-compose; \
     chmod +x /usr/local/bin/docker-compose
 
+# Install Node.js and npm via Volta
+ENV VOLTA_HOME=/usr/local/volta
+ENV PATH="${VOLTA_HOME}/bin:${PATH}"
+RUN curl -fsSL https://get.volta.sh | bash && volta install node
+
 WORKDIR /actions-runner
 
 # Download correct runner binary for architecture
