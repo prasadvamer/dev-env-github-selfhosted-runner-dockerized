@@ -80,6 +80,11 @@ ENV VOLTA_HOME=/usr/local/volta
 ENV PATH="${VOLTA_HOME}/bin:${PATH}"
 RUN curl -fsSL https://get.volta.sh | bash && volta install node
 
+# Install full Playwright/Chromium system deps (libgstreamer, gtk-4, codecs, etc.)
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    npx playwright@latest install-deps
+
 WORKDIR /actions-runner
 
 # Download correct runner binary for architecture
