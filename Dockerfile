@@ -41,6 +41,12 @@ RUN --mount=type=cache,target=/var/cache/apt \
       libcups2 \
       libcairo2 \
       libpango-1.0-0 \
+      libx11-xcb1 \
+      libxcursor1 \
+      libgtk-3-0 \
+      libpangocairo-1.0-0 \
+      libcairo-gobject2 \
+      libgdk-pixbuf-2.0-0 \
     ; \
     rm -rf /var/lib/apt/lists/*
 
