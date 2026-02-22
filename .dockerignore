@@ -1,0 +1,33 @@
+# Version control
+.git
+.gitignore
+
+# Env files (may contain secrets; not needed for image build)
+env/
+
+# CI/CD (not needed inside the image)
+.github
+
+# Compose and docs (image is built from Dockerfile only)
+compose.yml
+*.md
+LICENSE
+
+# IDE and editor
+.cursor
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS and misc
+.DS_Store
+Thumbs.db
+*.log
+
+# Optional: uncomment if you add local dev artifacts
+# node_modules
+# __pycache__
+# *.pyc
+# .env
+# .env.*
