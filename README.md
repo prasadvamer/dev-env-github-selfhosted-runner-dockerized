@@ -70,11 +70,13 @@ Or pull a specific build by SHA: `docker pull ghcr.io/prasadvamer/dev-env-github
 
 ## Custom setup scripts (install extra packages)
 
-You can run your own scripts **before** the runner starts (e.g. to install extra system packages, npm globals, or tools). Scripts run **as root** inside the container.
+You can run your own scripts **before** the runner starts (e.g. to install extra system packages, npm globals, or tools). Scripts run **as root** inside the container. The **base image is minimal**; add what you need via custom setup.
 
 1. Put one or more scripts on your host (e.g. `./runner-setup/01-install-packages.sh`).
 2. Mount that directory into the container at **`/runner-custom-setup.d`**.
 3. Scripts run in **sorted order** (use `01-...`, `02-...` to control order). Supported: `*.sh` files, or any executable file.
+
+The repository has a **runner-setup-example** folder with example scripts you can copy or mount and customize for your needs: `-v "$(pwd)/runner-setup-example:/runner-custom-setup.d"` (when using the published image, copy the folder from the repo first).
 
 **Example:** install a system package and a global npm module:
 

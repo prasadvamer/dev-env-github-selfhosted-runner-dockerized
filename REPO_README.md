@@ -10,6 +10,7 @@ This document covers **building the image from source**, running with Docker Com
 - **Uses host Docker** — The container mounts the host’s Docker socket (`/var/run/docker.sock`), so workflows can run `docker` and `docker-compose` without Docker-in-Docker. Work directory is shared so volume paths match the host.
 - **Multi-architecture** — Builds the correct runner binary for your platform (e.g. `actions-runner-linux-arm64` on Apple Silicon, `actions-runner-linux-x64` on amd64), avoiding “not a dynamic executable” and Rosetta errors on Mac.
 - **Config via env files** — One env file per runner (e.g. per repo). Use `docker compose --env-file env/your-repo.env` to choose which runner to start.
+- **Minimal base image** — The image includes runner, Docker CLI, Docker Compose, and Node (Volta). Optional packages are not preinstalled; use **custom setup scripts** (mount at `/runner-custom-setup.d`) or the **runner-setup-example** folder to add what you need.
 
 ---
 
@@ -101,11 +102,12 @@ All configuration is via environment variables, typically in an env file under `
 | `ENV_FILE`     | Yes*    | Path to this env file (e.g. `env/my-repo.env`). Used by Compose for substitution. |
 | `RUNNER_LABELS`| No      | Comma-separated labels (default: `self-hosted,docker`). Use in workflows as `runs-on: [self-hosted, docker]`. |
 | `RUNNER_WORK_DIR` | No   | Work directory for job files (default: `/tmp/github-runner-work`). **When running multiple runners, set a unique path per runner** (e.g. `/tmp/github-runner-work/runner-repo1`) so they don’t share the same directory and crash. |
+| `RUNNER_SKIP_WORK_DIR_MOUNT_CHECK` | No | Set to `1` to skip the “work dir must be a bind mount” check (e.g. on Docker Desktop for Mac if the check fails despite a correct `-v` mount). |
 | `DOCKER_GID`   | No      | Host Docker group GID if different from 999 (Linux: `getent group docker \| cut -d: -f3`). |
 
 \* Required for Compose to resolve `${ENV_FILE}` and other vars in `compose.yml`.
 
-**Custom setup scripts:** To install extra packages or run commands before the runner starts, mount a directory of scripts at `/runner-custom-setup.d` (e.g. `-v ./runner-setup:/runner-custom-setup.d`). Scripts run as root in sorted order. See [README.md](README.md#custom-setup-scripts-install-extra-packages) for details.
+**Custom setup scripts:** To install extra packages or run commands before the runner starts, mount a directory of scripts at `/runner-custom-setup.d` (e.g. `-v ./runner-setup:/runner-custom-setup.d`). Scripts run as root in sorted order. With Docker Compose, add a volume to your compose file or use an override: `volumes: - ./runner-setup:/runner-custom-setup.d`. The repo includes **runner-setup-example** with example scripts. See [README.md](README.md#custom-setup-scripts-install-extra-packages) for details.
 
 **Important:** Do not commit env files that contain real `RUNNER_TOKEN` values. Use `env/sample.env` as a template and add real env files to `.gitignore` if needed.
 

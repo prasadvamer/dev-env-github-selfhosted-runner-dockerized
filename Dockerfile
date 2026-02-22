@@ -7,7 +7,7 @@ ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base dependencies + Docker CLI + Playwright/Chromium system deps for E2E
+# Install base dependencies + Docker CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
@@ -21,32 +21,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       tar \
       gzip \
       docker.io \
-      libglib2.0-0 \
-      libnspr4 \
-      libnss3 \
-      libdbus-1-3 \
-      libatk1.0-0 \
-      libatspi2.0-0 \
-      libx11-6 \
-      libxcomposite1 \
-      libxdamage1 \
-      libxext6 \
-      libxfixes3 \
-      libxrandr2 \
-      libgbm1 \
-      libxcb1 \
-      libxkbcommon0 \
-      libasound2 \
-      libatk-bridge2.0-0 \
-      libcups2 \
-      libcairo2 \
-      libpango-1.0-0 \
-      libx11-xcb1 \
-      libxcursor1 \
-      libgtk-3-0 \
-      libpangocairo-1.0-0 \
-      libcairo-gobject2 \
-      libgdk-pixbuf-2.0-0 \
     ; \
     rm -rf /var/lib/apt/lists/*
 
@@ -79,11 +53,6 @@ RUN set -eux; \
 ENV VOLTA_HOME=/usr/local/volta
 ENV PATH="${VOLTA_HOME}/bin:${PATH}"
 RUN curl -fsSL https://get.volta.sh | bash && volta install node
-
-# Install full Playwright/Chromium system deps (libgstreamer, gtk-4, codecs, etc.)
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    npx playwright@latest install-deps
 
 WORKDIR /actions-runner
 
