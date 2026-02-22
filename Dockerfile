@@ -8,8 +8,8 @@ ARG TARGETPLATFORM
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install base dependencies + Docker CLI + Playwright/Chromium system deps for E2E
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -81,8 +81,8 @@ ENV PATH="${VOLTA_HOME}/bin:${PATH}"
 RUN curl -fsSL https://get.volta.sh | bash && volta install node
 
 # Install full Playwright/Chromium system deps (libgstreamer, gtk-4, codecs, etc.)
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     npx playwright@latest install-deps
 
 WORKDIR /actions-runner
