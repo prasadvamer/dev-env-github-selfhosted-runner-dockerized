@@ -105,6 +105,8 @@ All configuration is via environment variables, typically in an env file under `
 
 \* Required for Compose to resolve `${ENV_FILE}` and other vars in `compose.yml`.
 
+**Custom setup scripts:** To install extra packages or run commands before the runner starts, mount a directory of scripts at `/runner-custom-setup.d` (e.g. `-v ./runner-setup:/runner-custom-setup.d`). Scripts run as root in sorted order. See [README.md](README.md#custom-setup-scripts-install-extra-packages) for details.
+
 **Important:** Do not commit env files that contain real `RUNNER_TOKEN` values. Use `env/sample.env` as a template and add real env files to `.gitignore` if needed.
 
 ---

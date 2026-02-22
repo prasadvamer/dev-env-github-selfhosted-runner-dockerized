@@ -103,6 +103,9 @@ RUN set -eux; \
     ./bin/installdependencies.sh; \
     rm -rf /var/lib/apt/lists/*
 
+# Custom setup: mount scripts here and they run as root before the runner starts (see README)
+RUN mkdir -p /runner-custom-setup.d
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

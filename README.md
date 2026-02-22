@@ -68,6 +68,50 @@ Or pull a specific build by SHA: `docker pull ghcr.io/prasadvamer/dev-env-github
 
 ---
 
+## Custom setup scripts (install extra packages)
+
+You can run your own scripts **before** the runner starts (e.g. to install extra system packages, npm globals, or tools). Scripts run **as root** inside the container.
+
+1. Put one or more scripts on your host (e.g. `./runner-setup/01-install-packages.sh`).
+2. Mount that directory into the container at **`/runner-custom-setup.d`**.
+3. Scripts run in **sorted order** (use `01-...`, `02-...` to control order). Supported: `*.sh` files, or any executable file.
+
+**Example:** install a system package and a global npm module:
+
+```bash
+# On host: runner-setup/01-install-packages.sh
+#!/usr/bin/env bash
+set -e
+apt-get update && apt-get install -y --no-install-recommends python3-pip
+pip3 install --break-system-packages some-tool
+```
+
+```bash
+# On host: runner-setup/02-npm-globals.sh
+#!/usr/bin/env bash
+set -e
+export PATH="/usr/local/volta/bin:$PATH"
+npm install -g some-global-cli
+```
+
+Run the container with the mount:
+
+```bash
+docker run -d --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp/github-runner-work:/tmp/github-runner-work \
+  -v "$(pwd)/runner-setup:/runner-custom-setup.d" \
+  -e REPO_URL="..." \
+  -e RUNNER_TOKEN="..." \
+  -e RUNNER_NAME="..." \
+  -e RUNNER_WORK_DIR=/tmp/github-runner-work \
+  ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest
+```
+
+If any script exits non-zero, the container exits and the runner does not start. Only mount scripts you trust; they run as root.
+
+---
+
 ## Docker and Docker Compose in workflows
 
 The container mounts the host Docker socket and includes Docker CLI and Docker Compose. In your workflow:

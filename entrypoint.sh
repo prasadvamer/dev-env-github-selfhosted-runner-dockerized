@@ -49,6 +49,14 @@ if [ -z "${RUNNER_SKIP_WORK_DIR_MOUNT_CHECK:-}" ]; then
   fi
 fi
 
+# Run custom setup scripts (as root) before starting the runner. Mount scripts at /runner-custom-setup.d.
+if [ -d /runner-custom-setup.d ]; then
+  for f in $(find /runner-custom-setup.d -maxdepth 1 -type f \( -name "*.sh" -o -executable \) 2>/dev/null | sort); do
+    echo "Running custom setup: $f"
+    case "$f" in *.sh) bash "$f" ;; *) "$f" ;; esac || exit 1
+  done
+fi
+
 # Preserve environment variables and switch to runner user
 # Export all required variables so they're available in the subshell
 export HOME=/home/runner
