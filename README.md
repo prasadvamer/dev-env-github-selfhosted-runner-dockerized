@@ -47,6 +47,7 @@ The token is one-time use: after the runner registers, you don’t need it again
    - `RUNNER_TOKEN` — paste the token from GitHub (see [How to Get the GitHub Runner Token](#how-to-get-the-github-runner-token))
    - `RUNNER_NAME` — unique name for this runner (e.g. `docker-my-repo`)
    - `ENV_FILE` — path to this file (e.g. `env/my-repo.env`)
+   - `COMPOSE_PROJECT_NAME` — set to the same as `RUNNER_NAME` (so multiple runners can run without `-p`)
 
 3. **Build and run** the runner:
 
@@ -72,7 +73,7 @@ All configuration is via environment variables, typically in an env file under `
 | `RUNNER_NAME`  | Yes     | Display name for the runner; must be unique per repo. |
 | `ENV_FILE`     | Yes*    | Path to this env file (e.g. `env/my-repo.env`). Used by Compose for substitution. |
 | `RUNNER_LABELS`| No      | Comma-separated labels (default: `self-hosted,docker`). Use in workflows as `runs-on: [self-hosted, docker]`. |
-| `RUNNER_WORK_DIR` | No   | Work directory for job files (default: `/tmp/github-runner-work`). |
+| `RUNNER_WORK_DIR` | No   | Work directory for job files (default: `/tmp/github-runner-work`). **When running multiple runners, set a unique path per runner** (e.g. `/tmp/github-runner-work/runner-repo1`) so they don’t share the same directory and crash. |
 | `DOCKER_GID`   | No      | Host Docker group GID if different from 999 (Linux: `getent group docker \| cut -d: -f3`). |
 
 \* Required for Compose to resolve `${ENV_FILE}` and other vars in `compose.yml`.
@@ -99,11 +100,13 @@ Use one env file per repo and start a container per env file:
 # Runner for repo 1
 docker compose -f compose.yml --env-file env/repo-one.env up -d
 
-# Runner for repo 2 (different terminal or after stopping the first)
+# Runner for repo 2 (both stay running)
 docker compose -f compose.yml --env-file env/repo-two.env up -d
 ```
 
 Containers are distinguished by `RUNNER_NAME` (and thus by `container_name`). Use different env files and different `RUNNER_NAME` values for each.
+
+**Important:** Give each runner its own work directory by setting **`RUNNER_WORK_DIR`** to a unique path per env file (e.g. `/tmp/github-runner-work/runner-repo1` and `/tmp/github-runner-work/runner-repo2`). If both use the default `/tmp/github-runner-work`, they share the same host directory and can conflict, causing both containers to stop.
 
 ### Using the sample env file in docs
 
