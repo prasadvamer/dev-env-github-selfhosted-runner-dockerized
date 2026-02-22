@@ -10,7 +10,11 @@ Run GitHub Actions workflows on your own infrastructure using this Docker image.
 docker pull ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest
 ```
 
+Or pull from **Docker Hub:** [hub.docker.com/r/prasadvamer/github-selfhosted-runner](https://hub.docker.com/r/prasadvamer/github-selfhosted-runner) — `docker pull prasadvamer/github-selfhosted-runner:latest`
+
 Or pull a specific build by SHA: `docker pull ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:1236a1f`
+
+**Visit the Docker Hub page:** [hub.docker.com/r/prasadvamer/github-selfhosted-runner](https://hub.docker.com/r/prasadvamer/github-selfhosted-runner) — tags, digests, and full description.
 
 ---
 

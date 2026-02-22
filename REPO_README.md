@@ -227,3 +227,13 @@ After that, anyone can run:
 `docker pull ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest`
 
 without authentication. **Note:** Once a package is public, it cannot be made private again.
+
+---
+
+## Publishing to Docker Hub
+
+The workflow pushes the image to Docker Hub as well as GHCR.
+
+**Public link:** [hub.docker.com/r/prasadvamer/github-selfhosted-runner](https://hub.docker.com/r/prasadvamer/github-selfhosted-runner)
+
+Pull from Docker Hub: `docker pull prasadvamer/github-selfhosted-runner:latest`
