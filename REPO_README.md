@@ -62,6 +62,33 @@ The token is one-time use: after the runner registers, you don’t need it again
 
 ---
 
+## Local build and run (test before push)
+
+Build the image locally and run it with `docker run` to test changes before pushing (e.g. to trigger the publish workflow). From the repo root:
+
+**Build:**
+
+```bash
+docker build -t dev-env-github-selfhosted-runner-dockerized:local .
+```
+
+**Run (replace with your repo URL and a real runner token):**
+
+```bash
+docker run --rm -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp/github-runner-work:/tmp/github-runner-work \
+  -e REPO_URL="https://github.com/your-org/your-repo" \
+  -e RUNNER_TOKEN="your-token" \
+  -e RUNNER_NAME="docker-local-test" \
+  -e RUNNER_WORK_DIR=/tmp/github-runner-work \
+  dev-env-github-selfhosted-runner-dockerized:local
+```
+
+On **Docker Desktop for Mac**, if you see an error about the work directory not being a bind mount, add: `-e RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1`. When satisfied, push to `main` to publish the image via the workflow.
+
+---
+
 ## Configuration
 
 All configuration is via environment variables, typically in an env file under `env/`.

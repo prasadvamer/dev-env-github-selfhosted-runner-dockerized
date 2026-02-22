@@ -36,6 +36,18 @@ Or pull a specific build by SHA: `docker pull ghcr.io/prasadvamer/dev-env-github
      ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest
    ```
 
+   **Custom work directory:** If you want the runner to use a different path (e.g. your project dir), the **volume mount and `RUNNER_WORK_DIR` must use the same path**. Otherwise the runner’s workspace won’t match the host and workflows that run Docker/Compose can fail.
+
+   ```bash
+   # Example: use /tmp/your-project-repo-folder on both host and container
+   -v /tmp/your-project-repo-folder:/tmp/your-project-repo-folder \
+   -e RUNNER_WORK_DIR=/tmp/your-project-repo-folder \
+   ```
+
+   If you only change `RUNNER_WORK_DIR` but leave the volume as `/tmp/github-runner-work`, the runner will use a path that isn’t mounted from the host and things will break.
+
+   **Docker Desktop for Mac:** The image checks that the work directory is a bind mount. On Docker Desktop that check can fail even with the correct `-v` mount. If you see an error about “not a bind-mounted directory” but you did add the matching `-v`, add: `-e RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1` to skip the check.
+
    Or use Docker Compose with the [repository’s compose file](https://github.com/prasadvamer/dev-env-github-selfhosted-runner-dockerized/blob/main/compose.yml) and your env file.
 
 4. In GitHub: **Settings → Actions → Runners**. The runner should appear and become **Idle**.
@@ -50,7 +62,8 @@ Or pull a specific build by SHA: `docker pull ghcr.io/prasadvamer/dev-env-github
 | `RUNNER_TOKEN`   | Yes      | One-time registration token from Runners settings. |
 | `RUNNER_NAME`    | Yes      | Display name; unique per repo. |
 | `RUNNER_LABELS`  | No       | Default: `self-hosted,docker`. Use in workflows as `runs-on: [self-hosted, docker]`. |
-| `RUNNER_WORK_DIR`| No       | Default: `/tmp/github-runner-work`. Use a unique path per runner when running multiple. |
+| `RUNNER_WORK_DIR`| No       | Default: `/tmp/github-runner-work`. Must match the work-directory volume mount (same path on both sides); see Quick start. |
+| `RUNNER_SKIP_WORK_DIR_MOUNT_CHECK` | No | Set to `1` to skip the “work dir must be a bind mount” check (e.g. on Docker Desktop for Mac if the check fails despite a correct `-v`). |
 | `DOCKER_GID`     | No       | Host Docker group GID if not 999 (Linux: `getent group docker \| cut -d: -f3`). |
 
 ---

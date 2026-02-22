@@ -21,8 +21,33 @@ chown -R runner:runner /home/runner
 
 # Set the work directory (defaults to /tmp/github-runner-work for Docker-in-Docker compatibility)
 WORK_DIR="${RUNNER_WORK_DIR:-/tmp/github-runner-work}"
+WORK_DIR="${WORK_DIR%/}"   # trim trailing slash
 mkdir -p "$WORK_DIR"
 chown -R runner:runner "$WORK_DIR"
+
+# Require work directory to be a bind mount so it's shared with the host (needed for Docker/Compose in jobs).
+# On Docker Desktop for Mac the path may not appear as its own mount point; set RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1 to skip.
+is_mountpoint() {
+  if command -v mountpoint >/dev/null 2>&1; then
+    mountpoint -q "$1" 2>/dev/null
+  else
+    awk -v d="$1" 'd == $5 { exit 0 } END { exit 1 }' /proc/self/mountinfo 2>/dev/null
+  fi
+}
+if [ -z "${RUNNER_SKIP_WORK_DIR_MOUNT_CHECK:-}" ]; then
+  if ! is_mountpoint "$WORK_DIR"; then
+    echo "ERROR: RUNNER_WORK_DIR ($WORK_DIR) is not a bind-mounted directory."
+    echo "The runner needs the work directory to be mounted from the host so that Docker/Compose"
+    echo "used in workflows see the same files. Add a volume mount that matches RUNNER_WORK_DIR, e.g.:"
+    echo "  -v $WORK_DIR:$WORK_DIR"
+    echo "  -e RUNNER_WORK_DIR=$WORK_DIR"
+    echo "See: https://github.com/prasadvamer/dev-env-github-selfhosted-runner-dockerized#quick-start"
+    echo ""
+    echo "If you are on Docker Desktop for Mac and have already added the correct -v mount,"
+    echo "you can skip this check with: -e RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1"
+    exit 1
+  fi
+fi
 
 # Preserve environment variables and switch to runner user
 # Export all required variables so they're available in the subshell
