@@ -1,22 +1,22 @@
 # Repository: GitHub Actions Self-Hosted Runner (Docker)
 
-This document covers **building the image from source**, running with Docker Compose from this repo, and development. For **using the published image** (pull and run), see [README.md](README.md).
+This document covers **building the image from source** and running it with `docker run`. For **using the published image** (pull and run), see [README.md](README.md).
 
 ---
 
 ## What This Project Does
 
-- **Self-hosted runners in containers** — Each container registers as a GitHub Actions runner for a single repo. You can run several containers (one per repo or per env file) from the same image.
+- **Self-hosted runners in containers** — Each container registers as a GitHub Actions runner for a single repo. You can run several containers (one per repo) from the same image.
 - **Uses host Docker** — The container mounts the host’s Docker socket (`/var/run/docker.sock`), so workflows can run `docker` and `docker-compose` without Docker-in-Docker. Work directory is shared so volume paths match the host.
 - **Multi-architecture** — Builds the correct runner binary for your platform (e.g. `actions-runner-linux-arm64` on Apple Silicon, `actions-runner-linux-x64` on amd64), avoiding “not a dynamic executable” and Rosetta errors on Mac.
-- **Config via env files** — One env file per runner (e.g. per repo). Use `docker compose --env-file env/your-repo.env` to choose which runner to start.
+- **Config via env** — Pass variables with `-e` or use an env file: `docker run ... --env-file your-repo.env`.
 - **Minimal base image** — The image includes runner, Docker CLI, Docker Compose, and Node (Volta). Optional packages are not preinstalled; use **custom setup scripts** (mount at `/runner-custom-setup.d`) or the **runner-setup-example** folder to add what you need.
 
 ---
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker
 - A GitHub repo where you can add a self-hosted runner
 - A one-time registration token from that repo (see below)
 
@@ -37,29 +37,37 @@ The token is one-time use: after the runner registers, you don’t need it again
 
 1. **Clone this repo** and go to its directory.
 
-2. **Copy the sample env file** and edit it with your repo and token:
+2. **Build the image:**
 
    ```bash
-   cp env/sample.env env/my-repo.env
+   docker build -t dev-env-github-selfhosted-runner-dockerized:local .
    ```
 
-   Edit `env/my-repo.env` and set at least:
+3. **Copy the sample env file** and edit it with your repo and token:
+
+   ```bash
+   cp sample.env my-repo.env
+   ```
+
+   Edit `my-repo.env` and set at least:
    - `REPO_URL` — e.g. `https://github.com/your-org/your-repo`
    - `RUNNER_TOKEN` — paste the token from GitHub (see [How to Get the GitHub Runner Token](#how-to-get-the-github-runner-token))
    - `RUNNER_NAME` — unique name for this runner (e.g. `docker-my-repo`)
-   - `ENV_FILE` — path to this file (e.g. `env/my-repo.env`)
-   - `COMPOSE_PROJECT_NAME` — set to the same as `RUNNER_NAME` (so multiple runners can run without `-p`)
 
-3. **Build and run** the runner:
+4. **Run the runner** (use your env file and the work-dir volume):
 
    ```bash
-   docker compose -f compose.yml --env-file env/sample.env build
-   docker compose -f compose.yml --env-file env/sample.env up -d
+   docker run -d --restart unless-stopped \
+     -v /var/run/docker.sock:/var/run/docker.sock \
+     -v /tmp/github-runner-work:/tmp/github-runner-work \
+     --env-file my-repo.env \
+     -e RUNNER_WORK_DIR=/tmp/github-runner-work \
+     dev-env-github-selfhosted-runner-dockerized:local
    ```
 
-   Use your actual env file (e.g. `env/my-repo.env`) once you’ve created it. With `sample.env` you must at least set a valid `REPO_URL` and `RUNNER_TOKEN` for the runner to register.
+   (Use `ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest` if you’re using the published image instead of a local build.) On Docker Desktop for Mac, if the work-dir mount check fails, add `-e RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1`.
 
-4. In GitHub: **Repo → Settings → Actions → Runners**. The new runner should appear and become “Idle” when ready.
+5. In GitHub: **Repo → Settings → Actions → Runners**. The new runner should appear and become “Idle” when ready.
 
 ---
 
@@ -92,60 +100,66 @@ On **Docker Desktop for Mac**, if you see an error about the work directory not 
 
 ## Configuration
 
-All configuration is via environment variables, typically in an env file under `env/`.
+All configuration is via environment variables. Use `-e VAR=value` or `--env-file your-file.env` with `docker run`.
 
 | Variable        | Required | Description |
 |----------------|---------|-------------|
 | `REPO_URL`     | Yes     | GitHub repo URL (e.g. `https://github.com/org/repo`). |
 | `RUNNER_TOKEN` | Yes     | One-time registration token from the repo’s Runners settings. |
 | `RUNNER_NAME`  | Yes     | Display name for the runner; must be unique per repo. |
-| `ENV_FILE`     | Yes*    | Path to this env file (e.g. `env/my-repo.env`). Used by Compose for substitution. |
 | `RUNNER_LABELS`| No      | Comma-separated labels (default: `self-hosted,docker`). Use in workflows as `runs-on: [self-hosted, docker]`. |
-| `RUNNER_WORK_DIR` | No   | Work directory for job files (default: `/tmp/github-runner-work`). **When running multiple runners, set a unique path per runner** (e.g. `/tmp/github-runner-work/runner-repo1`) so they don’t share the same directory and crash. |
+| `RUNNER_WORK_DIR` | No   | Work directory for job files (default: `/tmp/github-runner-work`). Must match the `-v` mount path. **When running multiple runners, set a unique path per runner** (e.g. `/tmp/github-runner-work/runner-repo1`) so they don’t share the same directory. |
 | `RUNNER_SKIP_WORK_DIR_MOUNT_CHECK` | No | Set to `1` to skip the “work dir must be a bind mount” check (e.g. on Docker Desktop for Mac if the check fails despite a correct `-v` mount). |
 | `DOCKER_GID`   | No      | Host Docker group GID if different from 999 (Linux: `getent group docker \| cut -d: -f3`). |
 
-\* Required for Compose to resolve `${ENV_FILE}` and other vars in `compose.yml`.
+**Custom setup scripts:** To install extra packages or run commands before the runner starts, mount a directory of scripts at `/runner-custom-setup.d` (e.g. `-v ./runner-setup:/runner-custom-setup.d`). Scripts run as root in sorted order. The repo includes **runner-setup-example** with example scripts. See [README.md](README.md#custom-setup-scripts-install-extra-packages) for details.
 
-**Custom setup scripts:** To install extra packages or run commands before the runner starts, mount a directory of scripts at `/runner-custom-setup.d` (e.g. `-v ./runner-setup:/runner-custom-setup.d`). Scripts run as root in sorted order. With Docker Compose, add a volume to your compose file or use an override: `volumes: - ./runner-setup:/runner-custom-setup.d`. The repo includes **runner-setup-example** with example scripts. See [README.md](README.md#custom-setup-scripts-install-extra-packages) for details.
-
-**Important:** Do not commit env files that contain real `RUNNER_TOKEN` values. Use `env/sample.env` as a template and add real env files to `.gitignore` if needed.
+**Important:** Do not commit env files that contain real `RUNNER_TOKEN` values. Copy `sample.env` and fill in your values; `*.env` is in `.gitignore` except `sample.env`.
 
 ---
 
 ## How to Use
 
-### Single repo
+### Single runner
 
-Create one env file (e.g. `env/my-repo.env`), set `REPO_URL`, `RUNNER_TOKEN`, `RUNNER_NAME`, and `ENV_FILE`, then:
+Build (or pull) the image, then run with your env file and the required volume mounts:
 
 ```bash
-docker compose -f compose.yml --env-file env/my-repo.env up -d
+docker run -d --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp/github-runner-work:/tmp/github-runner-work \
+  --env-file env/my-repo.env \
+  -e RUNNER_WORK_DIR=/tmp/github-runner-work \
+  ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest
 ```
 
-### Multiple repos (multiple runners)
+### Multiple runners (multiple repos)
 
-Use one env file per repo and start a container per env file:
+Run one container per repo, each with its own env file and work directory:
 
 ```bash
 # Runner for repo 1
-docker compose -f compose.yml --env-file env/repo-one.env up -d
+docker run -d --restart unless-stopped --name runner-repo1 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp/github-runner-work/repo1:/tmp/github-runner-work/repo1 \
+  --env-file repo-one.env \
+  -e RUNNER_WORK_DIR=/tmp/github-runner-work/repo1 \
+  ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest
 
-# Runner for repo 2 (both stay running)
-docker compose -f compose.yml --env-file env/repo-two.env up -d
+# Runner for repo 2
+docker run -d --restart unless-stopped --name runner-repo2 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp/github-runner-work/repo2:/tmp/github-runner-work/repo2 \
+  --env-file repo-two.env \
+  -e RUNNER_WORK_DIR=/tmp/github-runner-work/repo2 \
+  ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest
 ```
 
-Containers are distinguished by `RUNNER_NAME` (and thus by `container_name`). Use different env files and different `RUNNER_NAME` values for each.
+Use different `RUNNER_NAME` and `RUNNER_WORK_DIR` (and matching `-v` path) per runner so they don’t share the same directory.
 
-**Important:** Give each runner its own work directory by setting **`RUNNER_WORK_DIR`** to a unique path per env file (e.g. `/tmp/github-runner-work/runner-repo1` and `/tmp/github-runner-work/runner-repo2`). If both use the default `/tmp/github-runner-work`, they share the same host directory and can conflict, causing both containers to stop.
+### Using the sample env file
 
-### Using the sample env file in docs
-
-The README and `env/sample.env` use `env/sample.env` in examples. For real use:
-
-1. Copy `env/sample.env` to something like `env/my-repo.env`.
-2. Fill in `REPO_URL`, `RUNNER_TOKEN`, `RUNNER_NAME`, and set `ENV_FILE=env/my-repo.env`.
-3. Run with that file: `docker compose -f compose.yml --env-file env/my-repo.env up -d`.
+Copy `sample.env` to e.g. `my-repo.env`, fill in `REPO_URL`, `RUNNER_TOKEN`, and `RUNNER_NAME`, then run with `--env-file my-repo.env`. Add `-e RUNNER_WORK_DIR=...` if you use a custom work path.
 
 ---
 
@@ -176,14 +190,13 @@ The work directory is shared between host and container so volume paths used in 
 
 ## Rebuild After Code or Image Changes
 
-After changing the Dockerfile or Compose setup:
+After changing the Dockerfile:
 
 ```bash
-docker compose -f compose.yml --env-file env/sample.env build --no-cache
-docker compose -f compose.yml --env-file env/sample.env up -d
+docker build --no-cache -t dev-env-github-selfhosted-runner-dockerized:local .
 ```
 
-Use your real env file (e.g. `env/my-repo.env`) when you run this for a specific runner.
+Then run the container again with your env file and volumes (see Quick start or How to Use). Stop any existing container first (e.g. `docker stop <container>` or stop by name).
 
 ---
 
@@ -191,12 +204,12 @@ Use your real env file (e.g. `env/my-repo.env`) when you run this for a specific
 
 | Goal | Command |
 |------|--------|
-| Build image | `docker compose -f compose.yml --env-file env/sample.env build` |
-| Start runner | `docker compose -f compose.yml --env-file env/sample.env up -d` |
-| Stop runner | `docker compose -f compose.yml --env-file env/sample.env down` |
-| Rebuild from scratch | `docker compose -f compose.yml --env-file env/sample.env build --no-cache` |
+| Build image | `docker build -t dev-env-github-selfhosted-runner-dockerized:local .` |
+| Start runner | `docker run -d ... --env-file your.env ...` (see Quick start) |
+| Stop runner | `docker stop <container>` (or by name if you used `--name`) |
+| Rebuild from scratch | `docker build --no-cache -t dev-env-github-selfhosted-runner-dockerized:local .` |
 
-Replace `env/sample.env` with your own env file (e.g. `env/my-repo.env`) and ensure it contains valid `REPO_URL`, `RUNNER_TOKEN`, `RUNNER_NAME`, and `ENV_FILE`.
+Use a copy of `sample.env` with valid `REPO_URL`, `RUNNER_TOKEN`, and `RUNNER_NAME` for `--env-file`.
 
 ---
 

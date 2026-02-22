@@ -4,12 +4,11 @@
 
 # Env files (may contain secrets; not needed for image build)
 env/
+*.env
 
 # CI/CD (not needed inside the image)
 .github
 
-# Compose and docs (image is built from Dockerfile only)
-compose.yml
 *.md
 LICENSE
 

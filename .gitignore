@@ -1,3 +1,4 @@
 # Env files: ignore all in env/ except the sample template
 env/*
-!env/sample.env
+*.env
+!sample.env

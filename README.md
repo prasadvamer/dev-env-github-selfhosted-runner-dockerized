@@ -48,7 +48,7 @@ Or pull a specific build by SHA: `docker pull ghcr.io/prasadvamer/dev-env-github
 
    **Docker Desktop for Mac:** The image checks that the work directory is a bind mount. On Docker Desktop that check can fail even with the correct `-v` mount. If you see an error about “not a bind-mounted directory” but you did add the matching `-v`, add: `-e RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1` to skip the check.
 
-   Or use Docker Compose with the [repository’s compose file](https://github.com/prasadvamer/dev-env-github-selfhosted-runner-dockerized/blob/main/compose.yml) and your env file.
+   You can use an env file instead of `-e` for each variable: copy [sample.env](https://github.com/prasadvamer/dev-env-github-selfhosted-runner-dockerized/blob/main/sample.env), fill it in, then add `--env-file your-file.env` to the `docker run` command (and keep the required `-v` mounts).
 
 4. In GitHub: **Settings → Actions → Runners**. The runner should appear and become **Idle**.
 
@@ -131,7 +131,7 @@ steps:
 | Goal        | Command / note |
 |------------|-----------------|
 | Pull image | `docker pull ghcr.io/prasadvamer/dev-env-github-selfhosted-runner-dockerized:latest` |
-| Run        | `docker run ...` (see Quick start) or use repo’s `compose.yml` + env file |
+| Run        | `docker run ...` (see Quick start); optional `--env-file` with a copy of sample.env |
 
 ---
 
