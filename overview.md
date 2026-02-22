@@ -26,6 +26,7 @@ docker pull prasadvamer/github-selfhosted-runner:latest
      -e REPO_URL="https://github.com/your-org/your-repo" \
      -e RUNNER_TOKEN="your-token-here" \
      -e RUNNER_NAME="my-runner" \
+     -e RUNNER_LABELS="self-hosted,docker" \
      -e RUNNER_WORK_DIR=/tmp/github-runner-work \
      prasadvamer/github-selfhosted-runner:latest
    ```
