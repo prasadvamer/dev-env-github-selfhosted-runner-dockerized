@@ -130,6 +130,13 @@ steps:
 
 ---
 
+## Troubleshooting
+
+**"A session for this runner already exists" / "Runner connect error: Conflict"**
+Another session is still active for this `RUNNER_NAME` (e.g. another container or a previous run that didn’t unregister). The container **retries automatically** and may succeed once the old session expires (often within a few minutes)—you may see "Runner reconnected" and "Listening for Jobs" without doing anything. To fix immediately: in the repo go to **Settings → Actions → Runners**, remove the runner with that name, then start the container again. Or stop any other container using the same name.
+
+---
+
 ## Summary
 
 | Goal        | Command / note |

@@ -75,6 +75,20 @@ You can run your own scripts **before** the runner starts (e.g. to install syste
 2. Mount that directory at **`/runner-custom-setup.d`**: add `-v "$(pwd)/runner-setup:/runner-custom-setup.d"` to your `docker run` command.
 3. Scripts run in **sorted order** (use `01-...`, `02-...` to control order). Supported: `*.sh` files (run with bash) or any executable file.
 
+Full copy-pastable command (replace `your-org/your-repo`, `your-token-here`, and `my-runner`; create `./runner-setup` and add scripts):
+
+```bash
+docker run -d --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp/github-runner-work:/tmp/github-runner-work \
+  -v "$(pwd)/runner-setup:/runner-custom-setup.d" \
+  -e REPO_URL="https://github.com/your-org/your-repo" \
+  -e RUNNER_TOKEN="your-token-here" \
+  -e RUNNER_NAME="my-runner" \
+  -e RUNNER_WORK_DIR=/tmp/github-runner-work \
+  prasadvamer/github-selfhosted-runner:latest
+```
+
 Example script (`runner-setup/01-install.sh`):
 ```bash
 #!/usr/bin/env bash
@@ -123,6 +137,13 @@ docker run -d --restart unless-stopped --name runner-repo2 \
 ```
 
 If two runners share the same work directory, they can conflict and stop.
+
+---
+
+## Troubleshooting
+
+**"A session for this runner already exists" / "Runner connect error: Conflict"**
+GitHub still has an active session for this runner name (e.g. another container with the same `RUNNER_NAME`, or a previous run that didn’t unregister). The container **retries automatically** and may succeed once the old session expires (often within a few minutes)—you may see "Runner reconnected" and "Listening for Jobs" without doing anything. If you prefer to fix it immediately: in the repo go to **Settings → Actions → Runners**, remove the existing runner with that name, then start the container again. Or stop any other container using the same `RUNNER_NAME`.
 
 ---
 
