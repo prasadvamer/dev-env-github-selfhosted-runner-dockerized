@@ -1,6 +1,6 @@
 # GitHub Actions Self-Hosted Runner
 
-Run GitHub Actions workflows on your own infrastructure using this Docker image. One image, multiple containers—each container is a dedicated runner for one repository. Supports **linux/amd64** and **linux/arm64** (Apple Silicon). Uses the host’s Docker daemon so workflow jobs can run `docker` and `docker compose`.
+Run GitHub Actions workflows on your own infrastructure using this Docker image. One image, multiple containers—each container is a dedicated runner for one repository. Supports **linux/amd64** and **linux/arm64** (Apple Silicon). Uses the host’s Docker daemon so workflow jobs can run `docker` and Docker Compose; both **`docker-compose`** (standalone) and **`docker compose`** (V2 plugin) are supported.
 
 ---
 
@@ -102,12 +102,13 @@ If any script exits with a non-zero status, the container exits and the runner d
 
 ## Using the runner in workflows
 
-The container has Docker CLI and Docker Compose and mounts the host Docker socket. In your workflow use:
+The container has Docker CLI and Docker Compose (V2) and mounts the host Docker socket. Both **`docker-compose`** (standalone) and **`docker compose`** (plugin) work. In your workflow use:
 
 ```yaml
 runs-on: [self-hosted, docker]
 steps:
   - run: docker compose up -d
+  # or: docker-compose -f docker-compose.test.arm.yml build
 ```
 
 The work directory is shared with the host, so volume paths in Compose match the host.

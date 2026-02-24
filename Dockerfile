@@ -38,7 +38,7 @@ RUN git config --system --add safe.directory '*' && \
 # GID 999 is default docker group on most Linux; adjust if your host differs
 RUN groupadd -g 999 -f docker 2>/dev/null || true && usermod -aG docker runner
 
-# Install Docker Compose to /usr/local/bin (globally accessible)
+# Install Docker Compose V2: standalone binary + plugin so both "docker-compose" and "docker compose" work
 ARG COMPOSE_VERSION=2.24.5
 RUN set -eux; \
     case "${TARGETARCH}" in \
@@ -46,8 +46,11 @@ RUN set -eux; \
       amd64) ARCH="x86_64" ;; \
       *) echo "Unsupported: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    curl -fL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" -o /usr/local/bin/docker-compose; \
-    chmod +x /usr/local/bin/docker-compose
+    curl -fL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" -o /tmp/docker-compose; \
+    chmod +x /tmp/docker-compose; \
+    mv /tmp/docker-compose /usr/local/bin/docker-compose; \
+    mkdir -p /usr/local/lib/docker/cli-plugins; \
+    cp /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Install Node.js and npm via Volta
 ENV VOLTA_HOME=/usr/local/volta
