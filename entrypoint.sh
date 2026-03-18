@@ -1,7 +1,34 @@
 #!/usr/bin/env bash
 set -e
 
-# Fix Docker socket permissions (needed for Docker Desktop on Mac / some Linux setups)
+# Docker mode: (1) host socket mounted, (2) remote daemon (DOCKER_HOST), or (3) internal daemon (DinD in same container)
+if [ -S /var/run/docker.sock ]; then
+  # Host socket mounted — use host daemon
+  :
+elif [ -n "${DOCKER_HOST:-}" ]; then
+  # User specified a remote daemon — use DOCKER_HOST (exported later)
+  :
+else
+  # No socket and no DOCKER_HOST: start internal Docker daemon (self-contained DinD). Jobs use this daemon.
+  # Requires container run with --privileged (or equivalent caps). Storage driver vfs works in most environments.
+  export RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1
+  echo "Starting internal Docker daemon (DinD mode)..."
+  mkdir -p /var/run
+  dockerd --storage-driver=vfs &
+  DOCKERD_PID=$!
+  for i in $(seq 1 30); do
+    if [ -S /var/run/docker.sock ]; then break; fi
+    sleep 1
+  done
+  if [ ! -S /var/run/docker.sock ]; then
+    echo "ERROR: Internal Docker daemon did not start in time."
+    kill $DOCKERD_PID 2>/dev/null || true
+    exit 1
+  fi
+  echo "Internal Docker daemon ready."
+fi
+
+# Fix Docker socket permissions (needed for Docker Desktop on Mac / some Linux setups, or internal daemon)
 if [ -S /var/run/docker.sock ]; then
   chmod 666 /var/run/docker.sock
 fi
@@ -65,6 +92,12 @@ export RUNNER_TOKEN="${RUNNER_TOKEN}"
 export RUNNER_NAME="${RUNNER_NAME}"
 export RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,docker}"
 export WORK_DIR="$WORK_DIR"
+
+# Docker: support both host socket mount and DinD/remote daemon (DOCKER_HOST)
+# When DOCKER_HOST is set (e.g. tcp://dind:2375), workflow steps use that daemon; no host socket needed.
+export DOCKER_HOST="${DOCKER_HOST:-}"
+export DOCKER_TLS_VERIFY="${DOCKER_TLS_VERIFY:-}"
+export DOCKER_CERT_PATH="${DOCKER_CERT_PATH:-}"
 
 # Ensure Node/npm (Volta) are on PATH for job steps (su can reset env)
 export VOLTA_HOME="${VOLTA_HOME:-/usr/local/volta}"
