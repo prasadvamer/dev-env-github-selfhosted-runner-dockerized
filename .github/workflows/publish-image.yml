@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      # Only run when image-relevant files change. Doc/config-only pushes (README, docs/, sample.env, etc.) do not trigger a build.
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'entrypoint.sh'
+  workflow_dispatch:
+    # Allow manual run from Actions tab when you want to publish without changing the above files
 
 env:
   REGISTRY: ghcr.io
