@@ -140,19 +140,21 @@ cd /actions-runner
   --work "${WORK_DIR}" \
   --replace
 
-# Clear token from environment after registration
-RUNNER_TOKEN_FILE_PATH="${RUNNER_TOKEN_FILE:-}"
+# Save token for deregistration, then clear from environment
+RUNNER_TOKEN_CLEANUP_FILE="/home/runner/.runner-token-cleanup"
+printf '%s' "${RUNNER_TOKEN}" > "$RUNNER_TOKEN_CLEANUP_FILE"
+chmod 600 "$RUNNER_TOKEN_CLEANUP_FILE"
 unset RUNNER_TOKEN
 
 cleanup() {
   echo "Unregistering runner..."
-  if [ -n "${RUNNER_TOKEN_FILE_PATH}" ] && [ -f "${RUNNER_TOKEN_FILE_PATH}" ]; then
+  if [ -f "$RUNNER_TOKEN_CLEANUP_FILE" ]; then
     local token
-    token="$(cat "$RUNNER_TOKEN_FILE_PATH")"
+    token="$(cat "$RUNNER_TOKEN_CLEANUP_FILE")"
     ./config.sh remove --unattended --token "$token" || true
+    rm -f "$RUNNER_TOKEN_CLEANUP_FILE"
   else
-    echo "WARNING: Cannot unregister -- RUNNER_TOKEN already cleared from environment."
-    echo "Use RUNNER_TOKEN_FILE for automatic deregistration on shutdown."
+    echo "WARNING: Cannot unregister -- cleanup token file not found."
   fi
 }
 

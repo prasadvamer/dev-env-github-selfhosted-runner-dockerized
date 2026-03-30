@@ -1,4 +1,59 @@
 # syntax=docker/dockerfile:1.5
+
+# ---------------------------------------------------------------------------
+# Stage 1a: Build gosu and containerd from source (Go 1.24.x)
+#            with google.golang.org/grpc >= 1.79.3 and Go >= 1.24.13
+# ---------------------------------------------------------------------------
+FROM --platform=$TARGETPLATFORM golang:1.24.13 AS builder-containerd
+
+ARG CONTAINERD_VERSION_TAG=v2.2.2
+ARG GOSU_VERSION=1.19
+ARG GRPC_FIX_VERSION=1.79.3
+
+# Build gosu
+RUN set -eux; \
+    CGO_ENABLED=0 go install -ldflags '-s -w' \
+      "github.com/tianon/gosu@${GOSU_VERSION}"; \
+    cp /go/bin/gosu /usr/local/bin/gosu
+
+# Build containerd binaries (containerd, ctr, containerd-shim-runc-v2)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    set -eux; \
+    git clone --depth 1 --branch "${CONTAINERD_VERSION_TAG}" \
+      https://github.com/containerd/containerd.git /build/containerd; \
+    cd /build/containerd; \
+    go get "google.golang.org/grpc@v${GRPC_FIX_VERSION}"; \
+    go mod tidy; \
+    go mod vendor; \
+    make STATIC=1 binaries; \
+    cp bin/containerd bin/ctr bin/containerd-shim-runc-v2 /usr/local/bin/
+
+# ---------------------------------------------------------------------------
+# Stage 1b: Build dockerd from source (Go 1.25.x – moby v29.3.1 requires >= 1.25.5)
+#            with google.golang.org/grpc >= 1.79.3
+# ---------------------------------------------------------------------------
+FROM --platform=$TARGETPLATFORM golang:1.25.8 AS builder-moby
+
+ARG MOBY_VERSION_TAG=docker-v29.3.1
+ARG GRPC_FIX_VERSION=1.79.3
+
+# Build dockerd (moby engine)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    set -eux; \
+    git clone --depth 1 --branch "${MOBY_VERSION_TAG}" \
+      https://github.com/moby/moby.git /build/moby; \
+    cd /build/moby; \
+    go get "google.golang.org/grpc@v${GRPC_FIX_VERSION}"; \
+    go mod tidy; \
+    go mod vendor; \
+    CGO_ENABLED=0 go build -o /usr/local/bin/dockerd \
+      -ldflags '-s -w' ./cmd/dockerd
+
+# ---------------------------------------------------------------------------
+# Stage 2: Final image
+# ---------------------------------------------------------------------------
 FROM --platform=$TARGETPLATFORM ubuntu:25.10
 
 ARG RUNNER_VERSION=2.333.1
@@ -15,14 +70,9 @@ ARG COMPOSE_VERSION=2.40.3
 ARG COMPOSE_SHA256_AMD64=dba9d98e1ba5bfe11d88c99b9bd32fc4a0624a30fafe68eea34d61a3e42fd372
 ARG COMPOSE_SHA256_ARM64=d26373b19e89160546d15407516cc59f453030d9bc5b43ba7faf16f7b4980137
 
-# Docker Engine + containerd pinned versions (fixes CVE in Go dependency <1.79.3)
+# Docker Engine + containerd apt versions (binaries overridden by source-built in builder stage)
 ARG DOCKER_VERSION=5:29.3.1-1~ubuntu.25.10~questing
 ARG CONTAINERD_VERSION=2.2.2-1~ubuntu.25.10~questing
-
-# Gosu checksums from: https://github.com/tianon/gosu/releases/tag/1.19
-ARG GOSU_VERSION=1.19
-ARG GOSU_SHA256_AMD64=52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
-ARG GOSU_SHA256_ARM64=3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44
 
 # Node.js LTS pinned version
 ARG NODE_VERSION=22
@@ -58,18 +108,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       docker-ce-cli="${DOCKER_VERSION}" \
       containerd.io="${CONTAINERD_VERSION}"
 
-# Install gosu from official release with checksum verification (apt version ships vulnerable Go stdlib)
-RUN set -eux; \
-    case "${TARGETARCH}" in \
-      arm64) CHECKSUM="${GOSU_SHA256_ARM64}" ;; \
-      amd64) CHECKSUM="${GOSU_SHA256_AMD64}" ;; \
-      *) echo "Unsupported: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${TARGETARCH}" \
-      -o /usr/sbin/gosu; \
-    echo "${CHECKSUM}  /usr/sbin/gosu" | sha256sum -c -; \
-    chmod +x /usr/sbin/gosu; \
-    gosu --version
+# Override apt-installed binaries with source-built versions (fixes CVE in grpc < 1.79.3 and Go < 1.24.13)
+COPY --from=builder-containerd /usr/local/bin/gosu        /usr/sbin/gosu
+COPY --from=builder-containerd /usr/local/bin/containerd  /usr/bin/containerd
+COPY --from=builder-containerd /usr/local/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+COPY --from=builder-containerd /usr/local/bin/ctr         /usr/bin/ctr
+COPY --from=builder-moby       /usr/local/bin/dockerd     /usr/bin/dockerd
 
 # Create runner user WITHOUT blanket sudo access
 RUN useradd -m runner
