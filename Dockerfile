@@ -1,14 +1,12 @@
 # syntax=docker/dockerfile:1.5
 
 # ---------------------------------------------------------------------------
-# Stage 1: Builder – compile containerd, dockerd, and gosu from source
-#           with google.golang.org/grpc >= 1.79.3 (fixes CVE in grpc < 1.79.3)
-#           and Go >= 1.24.13 (fixes CVE in Go stdlib < 1.24.13)
+# Stage 1a: Build gosu and containerd from source (Go 1.24.x)
+#            with google.golang.org/grpc >= 1.79.3 and Go >= 1.24.13
 # ---------------------------------------------------------------------------
-FROM --platform=$TARGETPLATFORM golang:1.24.13 AS builder
+FROM --platform=$TARGETPLATFORM golang:1.24.13 AS builder-containerd
 
 ARG CONTAINERD_VERSION_TAG=v2.2.2
-ARG MOBY_VERSION_TAG=v29.3.1
 ARG GOSU_VERSION=1.19
 ARG GRPC_FIX_VERSION=1.79.3
 
@@ -19,22 +17,37 @@ RUN set -eux; \
     cp /go/bin/gosu /usr/local/bin/gosu
 
 # Build containerd binaries (containerd, ctr, containerd-shim-runc-v2)
-RUN set -eux; \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    set -eux; \
     git clone --depth 1 --branch "${CONTAINERD_VERSION_TAG}" \
       https://github.com/containerd/containerd.git /build/containerd; \
     cd /build/containerd; \
     go get "google.golang.org/grpc@v${GRPC_FIX_VERSION}"; \
     go mod tidy; \
+    go mod vendor; \
     make STATIC=1 binaries; \
     cp bin/containerd bin/ctr bin/containerd-shim-runc-v2 /usr/local/bin/
 
+# ---------------------------------------------------------------------------
+# Stage 1b: Build dockerd from source (Go 1.25.x – moby v29.3.1 requires >= 1.25.5)
+#            with google.golang.org/grpc >= 1.79.3
+# ---------------------------------------------------------------------------
+FROM --platform=$TARGETPLATFORM golang:1.25.8 AS builder-moby
+
+ARG MOBY_VERSION_TAG=docker-v29.3.1
+ARG GRPC_FIX_VERSION=1.79.3
+
 # Build dockerd (moby engine)
-RUN set -eux; \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    set -eux; \
     git clone --depth 1 --branch "${MOBY_VERSION_TAG}" \
       https://github.com/moby/moby.git /build/moby; \
     cd /build/moby; \
     go get "google.golang.org/grpc@v${GRPC_FIX_VERSION}"; \
     go mod tidy; \
+    go mod vendor; \
     CGO_ENABLED=0 go build -o /usr/local/bin/dockerd \
       -ldflags '-s -w' ./cmd/dockerd
 
@@ -96,11 +109,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       containerd.io="${CONTAINERD_VERSION}"
 
 # Override apt-installed binaries with source-built versions (fixes CVE in grpc < 1.79.3 and Go < 1.24.13)
-COPY --from=builder /usr/local/bin/gosu        /usr/sbin/gosu
-COPY --from=builder /usr/local/bin/containerd  /usr/bin/containerd
-COPY --from=builder /usr/local/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
-COPY --from=builder /usr/local/bin/ctr         /usr/bin/ctr
-COPY --from=builder /usr/local/bin/dockerd     /usr/bin/dockerd
+COPY --from=builder-containerd /usr/local/bin/gosu        /usr/sbin/gosu
+COPY --from=builder-containerd /usr/local/bin/containerd  /usr/bin/containerd
+COPY --from=builder-containerd /usr/local/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+COPY --from=builder-containerd /usr/local/bin/ctr         /usr/bin/ctr
+COPY --from=builder-moby       /usr/local/bin/dockerd     /usr/bin/dockerd
 
 # Create runner user WITHOUT blanket sudo access
 RUN useradd -m runner
