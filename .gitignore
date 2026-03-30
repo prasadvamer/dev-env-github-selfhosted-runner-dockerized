@@ -2,3 +2,6 @@
 env/*
 *.env
 !sample.env
+
+.claude
+.DS_Store

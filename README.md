@@ -20,6 +20,7 @@ Run GitHub Actions workflows on your own infrastructure using this Docker image.
 - [Single and multiple runners](#single-and-multiple-runners)
 - [Docker and Docker Compose in workflows](#docker-and-docker-compose-in-workflows)
 - [Platform notes (arm64 and amd64)](#platform-notes-arm64-and-amd64)
+- [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Build from source](#build-from-source)
 - [Publishing (GHCR and Docker Hub)](#publishing-ghcr-and-docker-hub)
@@ -355,6 +356,49 @@ The image supports **linux/amd64** and **linux/arm64**. When you **build from so
 - **amd64:** `actions-runner-linux-x64` — e.g. Intel, AMD, typical Linux servers.
 
 Use the image on the same architecture you built or pulled it for.
+
+---
+
+## Testing
+
+The repo includes a test suite that builds the image and validates it locally. Requires Docker.
+
+```bash
+make test
+```
+
+This builds the image, then runs all test suites under `tests/`:
+
+| Suite | What it checks |
+|-------|---------------|
+| `test_build` | Image metadata — entrypoint, workdir, base OS, env vars |
+| `test_binaries` | All expected binaries are installed — docker, dockerd, containerd, git, node, npm, docker-compose, jq, curl, sudo, tar |
+| `test_git_config` | `safe.directory`, `core.fileMode`, `.gitconfig` ownership |
+| `test_directory_structure` | Runner files, custom-setup dir, user/group membership, sudo access |
+| `test_entrypoint_env` | Required env var validation (`REPO_URL`, `RUNNER_TOKEN`, `RUNNER_NAME`) and defaults |
+| `test_custom_setup` | Custom setup scripts execute in sorted order, failures abort |
+| `test_docker_modes` | **Integration** — all three Docker modes run a real container (`hello-world`) end-to-end |
+
+### CI pipeline
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `test-image.yml` | PR to `main` | Builds image + runs full test suite (merge gate) |
+| `publish-image.yml` | Push to `main` | Builds multi-arch image + publishes to GHCR and Docker Hub |
+
+Tests must pass on the PR before merging. The publish workflow runs only after merge.
+
+### Running a single test
+
+Each test file can run standalone:
+
+```bash
+# Build once
+docker build -t ghrunner-test:local .
+
+# Run one suite
+TEST_IMAGE=ghrunner-test:local bash tests/test_binaries.sh
+```
 
 ---
 

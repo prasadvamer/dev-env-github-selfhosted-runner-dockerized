@@ -6,8 +6,10 @@
 env/
 *.env
 
-# CI/CD (not needed inside the image)
+# CI/CD and tests (not needed inside the image)
 .github
+tests/
+Makefile
 
 *.md
 LICENSE

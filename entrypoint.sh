@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# Docker mode: (1) host socket mounted, (2) remote daemon (DOCKER_HOST), or (3) internal daemon (DinD in same container)
+# --- Docker mode: (1) host socket, (2) remote daemon (DOCKER_HOST), (3) internal DinD ---
 if [ -S /var/run/docker.sock ]; then
-  # Host socket mounted — use host daemon
   :
 elif [ -n "${DOCKER_HOST:-}" ]; then
-  # User specified a remote daemon — use DOCKER_HOST (exported later)
   :
 else
-  # No socket and no DOCKER_HOST: start internal Docker daemon (self-contained DinD). Jobs use this daemon.
-  # Requires container run with --privileged (or equivalent caps). Storage driver vfs works in most environments.
   export RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1
   echo "Starting internal Docker daemon (DinD mode)..."
   mkdir -p /var/run
@@ -28,13 +24,17 @@ else
   echo "Internal Docker daemon ready."
 fi
 
-# Fix Docker socket permissions (needed for Docker Desktop on Mac / some Linux setups, or internal daemon)
+# --- Docker socket permissions: group-based, NOT world-writable ---
 if [ -S /var/run/docker.sock ]; then
-  chmod 666 /var/run/docker.sock
+  SOCK_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "0")
+  if [ "$SOCK_GID" != "0" ]; then
+    groupmod -g "$SOCK_GID" docker 2>/dev/null || true
+  fi
+  chmod 660 /var/run/docker.sock
+  chgrp docker /var/run/docker.sock 2>/dev/null || true
 fi
 
-# Make /root directory and .gitconfig readable by all users
-# This is needed because actions/checkout tries to stat /root/.gitconfig
+# --- Git config and /root access ---
 chmod 755 /root
 if [ -f /root/.gitconfig ]; then
   chmod 644 /root/.gitconfig
@@ -43,17 +43,18 @@ else
   chmod 644 /root/.gitconfig
 fi
 
-# Ensure runner home directory has proper permissions
 chown -R runner:runner /home/runner
 
-# Set the work directory (defaults to /tmp/github-runner-work for Docker-in-Docker compatibility)
+# --- Work directory ---
 WORK_DIR="${RUNNER_WORK_DIR:-/tmp/github-runner-work}"
-WORK_DIR="${WORK_DIR%/}"   # trim trailing slash
+WORK_DIR="${WORK_DIR%/}"
 mkdir -p "$WORK_DIR"
 chown -R runner:runner "$WORK_DIR"
 
-# Require work directory to be a bind mount so it's shared with the host (needed for Docker/Compose in jobs).
-# On Docker Desktop for Mac the path may not appear as its own mount point; set RUNNER_SKIP_WORK_DIR_MOUNT_CHECK=1 to skip.
+# Add work directory to git safe.directory at runtime (not wildcard)
+git config --system --add safe.directory "${WORK_DIR}" 2>/dev/null || true
+
+# --- Mount check ---
 is_mountpoint() {
   if command -v mountpoint >/dev/null 2>&1; then
     mountpoint -q "$1" 2>/dev/null
@@ -76,38 +77,47 @@ if [ -z "${RUNNER_SKIP_WORK_DIR_MOUNT_CHECK:-}" ]; then
   fi
 fi
 
-# Run custom setup scripts (as root) before starting the runner. Mount scripts at /runner-custom-setup.d.
+# --- Custom setup scripts (as root) with safe filename handling ---
 if [ -d /runner-custom-setup.d ]; then
-  for f in $(find /runner-custom-setup.d -maxdepth 1 -type f \( -name "*.sh" -o -executable \) 2>/dev/null | sort); do
-    echo "Running custom setup: $f"
-    case "$f" in *.sh) bash "$f" ;; *) "$f" ;; esac || exit 1
-  done
+  find /runner-custom-setup.d -maxdepth 1 -type f \( -name "*.sh" -o -executable \) -print0 2>/dev/null | \
+    sort -z | \
+    while IFS= read -r -d '' f; do
+      # Only execute scripts owned by root to prevent injection via mounted volumes
+      if [ "$(stat -c '%u' "$f")" != "0" ]; then
+        echo "WARNING: Skipping $f -- not owned by root"
+        continue
+      fi
+      echo "Running custom setup: $f"
+      case "$f" in *.sh) bash "$f" ;; *) "$f" ;; esac || exit 1
+    done
 fi
 
-# Preserve environment variables and switch to runner user
-# Export all required variables so they're available in the subshell
+# --- Support file-based secrets (Docker secrets / mounted files) ---
+if [ -n "${RUNNER_TOKEN_FILE:-}" ] && [ -f "${RUNNER_TOKEN_FILE}" ]; then
+  RUNNER_TOKEN="$(cat "$RUNNER_TOKEN_FILE")"
+fi
+
+# --- Export environment for runner subprocess ---
 export HOME=/home/runner
-export REPO_URL="${REPO_URL}"
-export RUNNER_TOKEN="${RUNNER_TOKEN}"
-export RUNNER_NAME="${RUNNER_NAME}"
+export REPO_URL="${REPO_URL:-}"
+export RUNNER_TOKEN="${RUNNER_TOKEN:-}"
+export RUNNER_NAME="${RUNNER_NAME:-}"
 export RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,docker}"
 export WORK_DIR="$WORK_DIR"
 
 # Docker: support both host socket mount and DinD/remote daemon (DOCKER_HOST)
-# When DOCKER_HOST is set (e.g. tcp://dind:2375), workflow steps use that daemon; no host socket needed.
 export DOCKER_HOST="${DOCKER_HOST:-}"
 export DOCKER_TLS_VERIFY="${DOCKER_TLS_VERIFY:-}"
 export DOCKER_CERT_PATH="${DOCKER_CERT_PATH:-}"
 
-# Ensure Node/npm (Volta) are on PATH for job steps (su can reset env)
+# Ensure Node/npm (Volta) are on PATH for job steps
 export VOLTA_HOME="${VOLTA_HOME:-/usr/local/volta}"
 export PATH="${VOLTA_HOME}/bin:${PATH}"
 
-# Switch to runner user; set PATH/VOLTA_HOME inside su so job steps see node/npm
-exec su runner -c 'export VOLTA_HOME=/usr/local/volta; export PATH=/usr/local/volta/bin:$PATH; cd /actions-runner && bash -s' << 'RUNNER_SCRIPT'
-set -e
+# Switch to runner user via gosu (more secure than su -m)
+exec gosu runner bash -s << 'RUNNER_SCRIPT'
+set -euo pipefail
 
-# Set HOME explicitly for the runner process
 export HOME=/home/runner
 export VOLTA_HOME=/usr/local/volta
 export PATH=/usr/local/volta/bin:$PATH
@@ -120,6 +130,8 @@ for v in "${required_vars[@]}"; do
   fi
 done
 
+cd /actions-runner
+
 ./config.sh --unattended \
   --url "${REPO_URL}" \
   --token "${RUNNER_TOKEN}" \
@@ -128,12 +140,22 @@ done
   --work "${WORK_DIR}" \
   --replace
 
+# Clear token from environment after registration
+RUNNER_TOKEN_FILE_PATH="${RUNNER_TOKEN_FILE:-}"
+unset RUNNER_TOKEN
+
 cleanup() {
   echo "Unregistering runner..."
-  ./config.sh remove --unattended --token "${RUNNER_TOKEN}" || true
+  if [ -n "${RUNNER_TOKEN_FILE_PATH}" ] && [ -f "${RUNNER_TOKEN_FILE_PATH}" ]; then
+    local token
+    token="$(cat "$RUNNER_TOKEN_FILE_PATH")"
+    ./config.sh remove --unattended --token "$token" || true
+  else
+    echo "WARNING: Cannot unregister -- RUNNER_TOKEN already cleared from environment."
+    echo "Use RUNNER_TOKEN_FILE for automatic deregistration on shutdown."
+  fi
 }
 
 trap cleanup INT TERM EXIT
-
 ./run.sh
 RUNNER_SCRIPT
