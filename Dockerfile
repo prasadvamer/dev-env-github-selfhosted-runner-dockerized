@@ -1,13 +1,31 @@
 # syntax=docker/dockerfile:1.5
-FROM --platform=$TARGETPLATFORM ubuntu:22.04
+FROM --platform=$TARGETPLATFORM ubuntu:24.04
 
-ARG RUNNER_VERSION=2.333.0
+ARG RUNNER_VERSION=2.333.1
 ARG TARGETARCH
 ARG TARGETPLATFORM
 
+# --- Checksums for supply-chain integrity verification ---
+# Runner checksums from: https://github.com/actions/runner/releases/tag/v2.333.1
+ARG RUNNER_SHA256_AMD64=18f8f68ed1892854ff2ab1bab4fcaa2f5abeedc98093b6cb13638991725cab74
+ARG RUNNER_SHA256_ARM64=69ac7e5692f877189e7dddf4a1bb16cbbd6425568cd69a0359895fac48b9ad3b
+
+# Compose checksums from: https://github.com/docker/compose/releases/tag/v2.40.3
+ARG COMPOSE_VERSION=2.40.3
+ARG COMPOSE_SHA256_AMD64=dba9d98e1ba5bfe11d88c99b9bd32fc4a0624a30fafe68eea34d61a3e42fd372
+ARG COMPOSE_SHA256_ARM64=d26373b19e89160546d15407516cc59f453030d9bc5b43ba7faf16f7b4980137
+
+# Node.js LTS pinned version
+ARG NODE_VERSION=22
+
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base dependencies + Docker CLI
+LABEL org.opencontainers.image.title="GitHub Actions Self-Hosted Runner" \
+      org.opencontainers.image.description="Dockerized GitHub Actions self-hosted runner with Docker-in-Docker support" \
+      org.opencontainers.image.source="https://github.com/prasadvamer/dev-env-github-selfhosted-runner-dockerized" \
+      org.opencontainers.image.licenses="MIT"
+
+# Install system dependencies + Docker Engine from Docker apt repo
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
@@ -17,69 +35,84 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       curl \
       git \
       jq \
-      sudo \
       tar \
       gzip \
-      docker.io \
+      gosu \
     ; \
-    rm -rf /var/lib/apt/lists/*
+    install -m 0755 -d /etc/apt/keyrings; \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc; \
+    chmod a+r /etc/apt/keyrings/docker.asc; \
+    . /etc/os-release; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io
 
-RUN useradd -m runner && echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# Create runner user WITHOUT blanket sudo access
+RUN useradd -m runner
 
-# Configure Git globally to avoid permission issues
-# Create .gitconfig for both root and runner user
-RUN git config --system --add safe.directory '*' && \
+# Configure Git: restrict safe.directory to runner paths only (not wildcard)
+# The work directory is added dynamically in entrypoint.sh
+RUN git config --system --add safe.directory /actions-runner && \
     git config --system core.fileMode false && \
     mkdir -p /root && touch /root/.gitconfig && chmod 644 /root/.gitconfig && \
     mkdir -p /home/runner && touch /home/runner/.gitconfig && \
     chown -R runner:runner /home/runner
 
-# Allow runner to use host Docker (socket mounted at /var/run/docker.sock)
-# GID 999 is default docker group on most Linux; adjust if your host differs
+# Allow runner to use Docker via group membership
 RUN groupadd -g 999 -f docker 2>/dev/null || true && usermod -aG docker runner
 
-# Install Docker Compose V2: standalone binary + plugin so both "docker-compose" and "docker compose" work
-ARG COMPOSE_VERSION=2.24.5
+# Install Docker Compose V2 with checksum verification
 RUN set -eux; \
     case "${TARGETARCH}" in \
-      arm64) ARCH="aarch64" ;; \
-      amd64) ARCH="x86_64" ;; \
+      arm64) ARCH="aarch64"; CHECKSUM="${COMPOSE_SHA256_ARM64}" ;; \
+      amd64) ARCH="x86_64";  CHECKSUM="${COMPOSE_SHA256_AMD64}" ;; \
       *) echo "Unsupported: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    curl -fL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" -o /tmp/docker-compose; \
+    curl -fL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" \
+      -o /tmp/docker-compose; \
+    echo "${CHECKSUM}  /tmp/docker-compose" | sha256sum -c -; \
     chmod +x /tmp/docker-compose; \
     mv /tmp/docker-compose /usr/local/bin/docker-compose; \
     mkdir -p /usr/local/lib/docker/cli-plugins; \
     cp /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
-# Install Node.js and npm via Volta
+# Install Node.js via Volta with pinned version
 ENV VOLTA_HOME=/usr/local/volta
 ENV PATH="${VOLTA_HOME}/bin:${PATH}"
-RUN curl -fsSL https://get.volta.sh | bash && volta install node
+RUN set -eux; \
+    curl -fsSL https://get.volta.sh -o /tmp/volta-install.sh; \
+    bash /tmp/volta-install.sh; \
+    rm /tmp/volta-install.sh; \
+    volta install node@${NODE_VERSION}
 
 WORKDIR /actions-runner
 
-# Download correct runner binary for architecture
+# Download runner binary WITH checksum verification
 RUN set -eux; \
     case "${TARGETARCH}" in \
-      arm64) ARCH="arm64" ;; \
-      amd64) ARCH="x64" ;; \
+      arm64) ARCH="arm64"; CHECKSUM="${RUNNER_SHA256_ARM64}" ;; \
+      amd64) ARCH="x64";   CHECKSUM="${RUNNER_SHA256_AMD64}" ;; \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     curl -fL -o actions-runner.tar.gz \
       "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${ARCH}-${RUNNER_VERSION}.tar.gz"; \
+    echo "${CHECKSUM}  actions-runner.tar.gz" | sha256sum -c -; \
     tar xzf actions-runner.tar.gz; \
     rm actions-runner.tar.gz
 
+# Install runner dependencies and clean up
 RUN set -eux; \
     ./bin/installdependencies.sh; \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/*
 
-# Custom setup: mount scripts here and they run as root before the runner starts (see README)
+# Custom setup directory
 RUN mkdir -p /runner-custom-setup.d
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Start as root to fix Docker socket permissions, then switch to runner
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+  CMD pgrep -f "Runner.Listener" > /dev/null || exit 1
+
 ENTRYPOINT ["/entrypoint.sh"]
