@@ -20,9 +20,9 @@ assert_eq "$wd" "/actions-runner" "WORKDIR is /actions-runner"
 volta=$(run_in_image 'echo $VOLTA_HOME')
 assert_eq "$volta" "/usr/local/volta" "VOLTA_HOME is set"
 
-# Base image is Ubuntu 24.04
+# Base image is Ubuntu 25.10
 codename=$(run_in_image 'grep VERSION_CODENAME /etc/os-release | cut -d= -f2')
-assert_eq "$codename" "noble" "Base image is Ubuntu 24.04 (noble)"
+assert_eq "$codename" "questing" "Base image is Ubuntu 25.10 (questing)"
 
 # HEALTHCHECK instruction present
 hc=$(docker inspect --format '{{json .Config.Healthcheck}}' "$TEST_IMAGE")
