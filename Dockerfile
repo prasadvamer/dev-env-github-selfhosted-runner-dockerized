@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.5
-FROM --platform=$TARGETPLATFORM ubuntu:24.04
+FROM --platform=$TARGETPLATFORM ubuntu:25.10
 
 ARG RUNNER_VERSION=2.333.1
 ARG TARGETARCH
@@ -14,6 +14,15 @@ ARG RUNNER_SHA256_ARM64=69ac7e5692f877189e7dddf4a1bb16cbbd6425568cd69a0359895fac
 ARG COMPOSE_VERSION=2.40.3
 ARG COMPOSE_SHA256_AMD64=dba9d98e1ba5bfe11d88c99b9bd32fc4a0624a30fafe68eea34d61a3e42fd372
 ARG COMPOSE_SHA256_ARM64=d26373b19e89160546d15407516cc59f453030d9bc5b43ba7faf16f7b4980137
+
+# Docker Engine + containerd pinned versions (fixes CVE in Go dependency <1.79.3)
+ARG DOCKER_VERSION=5:29.3.1-1~ubuntu.25.10~questing
+ARG CONTAINERD_VERSION=2.2.2-1~ubuntu.25.10~questing
+
+# Gosu checksums from: https://github.com/tianon/gosu/releases/tag/1.19
+ARG GOSU_VERSION=1.19
+ARG GOSU_SHA256_AMD64=52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
+ARG GOSU_SHA256_ARM64=3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44
 
 # Node.js LTS pinned version
 ARG NODE_VERSION=22
@@ -37,7 +46,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       jq \
       tar \
       gzip \
-      gosu \
     ; \
     install -m 0755 -d /etc/apt/keyrings; \
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc; \
@@ -45,7 +53,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     . /etc/os-release; \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list; \
     apt-get update; \
-    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io
+    apt-get install -y --no-install-recommends \
+      docker-ce="${DOCKER_VERSION}" \
+      docker-ce-cli="${DOCKER_VERSION}" \
+      containerd.io="${CONTAINERD_VERSION}"
+
+# Install gosu from official release with checksum verification (apt version ships vulnerable Go stdlib)
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      arm64) CHECKSUM="${GOSU_SHA256_ARM64}" ;; \
+      amd64) CHECKSUM="${GOSU_SHA256_AMD64}" ;; \
+      *) echo "Unsupported: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${TARGETARCH}" \
+      -o /usr/sbin/gosu; \
+    echo "${CHECKSUM}  /usr/sbin/gosu" | sha256sum -c -; \
+    chmod +x /usr/sbin/gosu; \
+    gosu --version
 
 # Create runner user WITHOUT blanket sudo access
 RUN useradd -m runner
@@ -83,7 +107,8 @@ RUN set -eux; \
     curl -fsSL https://get.volta.sh -o /tmp/volta-install.sh; \
     bash /tmp/volta-install.sh; \
     rm /tmp/volta-install.sh; \
-    volta install node@${NODE_VERSION}
+    volta install node@${NODE_VERSION}; \
+    npm install -g tar@7.5.13 minimatch@10.2.4
 
 WORKDIR /actions-runner
 
