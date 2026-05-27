@@ -132,6 +132,11 @@ done
 
 cd /actions-runner
 
+# Remove stale local config files so config.sh can reconfigure on container restart.
+# Without this, a previously-killed container leaves .runner/.credentials behind and
+# config.sh refuses to proceed even with --replace.
+rm -f .runner .credentials .credentials_rsaparams 2>/dev/null || true
+
 ./config.sh --unattended \
   --url "${REPO_URL}" \
   --token "${RUNNER_TOKEN}" \
