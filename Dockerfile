@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.5
 FROM --platform=$TARGETPLATFORM ubuntu:25.10
 
-ARG RUNNER_VERSION=2.333.1
+ARG RUNNER_VERSION=2.335.1
 ARG TARGETARCH
 ARG TARGETPLATFORM
 
 # --- Checksums for supply-chain integrity verification ---
-# Runner checksums from: https://github.com/actions/runner/releases/tag/v2.333.1
-ARG RUNNER_SHA256_AMD64=18f8f68ed1892854ff2ab1bab4fcaa2f5abeedc98093b6cb13638991725cab74
-ARG RUNNER_SHA256_ARM64=69ac7e5692f877189e7dddf4a1bb16cbbd6425568cd69a0359895fac48b9ad3b
+# Runner checksums from: https://github.com/actions/runner/releases/tag/v2.335.1
+ARG RUNNER_SHA256_AMD64=0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
+ARG RUNNER_SHA256_ARM64=0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
 
 # Compose checksums from: https://github.com/docker/compose/releases/tag/v2.40.3
 ARG COMPOSE_VERSION=2.40.3
